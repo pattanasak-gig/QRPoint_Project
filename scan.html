@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QRPoint - สะสมแต้ม</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container scan-page">
+    <div class="card">
+      <div class="logo">
+        <div class="logo-icon">QP</div>
+        <h1>QRPoint</h1>
+        <p class="subtitle">ระบบสะสมแต้ม</p>
+      </div>
+
+      <!-- QR Expired -->
+      <div id="expiredSection" class="section hidden">
+        <div class="alert alert-error">
+          <span class="alert-icon">&#10060;</span>
+          <div>
+            <strong>QR Code หมดอายุ</strong>
+            <p>QR Code นี้ใช้ได้เฉพาะวันที่สร้างเท่านั้น กรุณาติดต่อพนักงานเพื่อขอ QR Code ใหม่</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phone Input -->
+      <div id="phoneSection" class="section hidden">
+        <h2>กรอกเบอร์โทรศัพท์</h2>
+        <p class="text-muted">เพื่อสะสมแต้มของคุณ</p>
+        <div class="form-group">
+          <label for="phoneInput">เบอร์โทรศัพท์</label>
+          <input type="tel" id="phoneInput" placeholder="0812345678" maxlength="10" pattern="[0-9]*" inputmode="numeric">
+          <small class="text-muted">ระบุเบอร์โทรศัพท์ 10 หลัก</small>
+        </div>
+        <button id="submitBtn" class="btn btn-primary btn-block" onclick="submitPoints()">
+          <span id="submitText">สะสมแต้ม</span>
+          <span id="submitLoading" class="loading hidden"></span>
+        </button>
+      </div>
+
+      <!-- Result -->
+      <div id="resultSection" class="section hidden">
+        <div id="resultAlert"></div>
+
+        <div class="points-display">
+          <div class="points-circle">
+            <span class="points-number" id="totalPoints">0</span>
+            <span class="points-label">คะแนน</span>
+          </div>
+        </div>
+
+        <div id="rewardsSection" class="rewards-list"></div>
+
+        <button class="btn btn-outline btn-block" onclick="resetForm()">สแกนเบอร์อื่น</button>
+      </div>
+
+      <!-- Error -->
+      <div id="errorSection" class="section hidden">
+        <div class="alert alert-error">
+          <span class="alert-icon">&#10060;</span>
+          <p id="errorMessage"></p>
+        </div>
+        <button class="btn btn-outline btn-block" onclick="resetForm()">ลองใหม่</button>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <p>QRPoint System &copy; 2026</p>
+    </footer>
+  </div>
+
+  <script src="js/scan.js"></script>
+</body>
+</html>
