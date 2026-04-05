@@ -3,6 +3,7 @@ const SPREADSHEET_ID = '1Isba08dIUNvDm_BLj05Z5Krntl2nvqdrqo5t6mA4hmw';
 const ADMIN_PASSWORD = '@admin1234';
 const SECRET_KEY = 'QRPoint_Secret_2026_!@#$';
 const POINTS_PER_SCAN = 10;
+const MAX_SCANS_PER_DAY = 2;
 
 // ==================== SHEET NAMES ====================
 const SHEET_POINTS = 'Points';
@@ -13,32 +14,32 @@ const SHEET_REDEMPTIONS = 'Redemptions';
 function setupSheets() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
-  // Points sheet
   let pointsSheet = ss.getSheetByName(SHEET_POINTS);
   if (!pointsSheet) {
     pointsSheet = ss.insertSheet(SHEET_POINTS);
     pointsSheet.appendRow(['id', 'phone', 'date', 'points', 'cycle', 'timestamp']);
     pointsSheet.getRange('1:1').setFontWeight('bold');
+    // ตั้งค่าคอลัมน์ phone (B) และ date (C) เป็น Plain Text ป้องกัน Sheets แปลงค่า
+    pointsSheet.getRange('B:B').setNumberFormat('@STRING@');
+    pointsSheet.getRange('C:C').setNumberFormat('@STRING@');
   }
 
-  // Rewards sheet
   let rewardsSheet = ss.getSheetByName(SHEET_REWARDS);
   if (!rewardsSheet) {
     rewardsSheet = ss.insertSheet(SHEET_REWARDS);
     rewardsSheet.appendRow(['min_points', 'reward_name', 'reward_detail']);
     rewardsSheet.getRange('1:1').setFontWeight('bold');
-    // ตัวอย่างรางวัล
     rewardsSheet.appendRow([50, 'ส่วนลด 10%', 'รับส่วนลด 10% สำหรับการซื้อครั้งถัดไป']);
     rewardsSheet.appendRow([100, 'ส่วนลด 20%', 'รับส่วนลด 20% สำหรับการซื้อครั้งถัดไป']);
     rewardsSheet.appendRow([200, 'ของรางวัลพิเศษ', 'รับของรางวัลพิเศษจากทางร้าน']);
   }
 
-  // Redemptions sheet
   let redemptionsSheet = ss.getSheetByName(SHEET_REDEMPTIONS);
   if (!redemptionsSheet) {
     redemptionsSheet = ss.insertSheet(SHEET_REDEMPTIONS);
     redemptionsSheet.appendRow(['id', 'phone', 'cycle', 'total_points', 'reward_name', 'redeemed_date', 'redeemed_by']);
     redemptionsSheet.getRange('1:1').setFontWeight('bold');
+    redemptionsSheet.getRange('B:B').setNumberFormat('@STRING@');
   }
 }
 
@@ -58,27 +59,13 @@ function handleRequest(e) {
   let result;
   try {
     switch (action) {
-      case 'generateToken':
-        result = generateToken(params);
-        break;
-      case 'validateToken':
-        result = validateToken(params);
-        break;
-      case 'addPoints':
-        result = addPoints(params);
-        break;
-      case 'getPoints':
-        result = getPoints(params);
-        break;
-      case 'getRewards':
-        result = getRewards();
-        break;
-      case 'getStats':
-        result = getStats(params);
-        break;
-      case 'redeemReward':
-        result = redeemReward(params);
-        break;
+      case 'generateToken':  result = generateToken(params);  break;
+      case 'validateToken':  result = validateToken(params);  break;
+      case 'addPoints':      result = addPoints(params);      break;
+      case 'getPoints':      result = getPoints(params);      break;
+      case 'getRewards':     result = getRewards();           break;
+      case 'getStats':       result = getStats(params);       break;
+      case 'redeemReward':   result = redeemReward(params);   break;
       case 'setup':
         setupSheets();
         result = { success: true, message: 'Sheets created successfully' };
@@ -93,6 +80,27 @@ function handleRequest(e) {
   return ContentService
     .createTextOutput(JSON.stringify(result))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ==================== HELPERS: แปลงค่าจาก Sheets ====================
+// Google Sheets อาจเก็บ phone เป็น number และ date เป็น Date object
+function cellToPhone(val) {
+  // แปลงเป็น string แล้ว zero-pad ให้ครบ 10 หลัก
+  var str = String(val).replace(/[^0-9]/g, '');
+  // ถ้าขาด leading 0 (เช่น Sheets ตัด 0 ออก) ให้เติมกลับ
+  if (str.length === 9) str = '0' + str;
+  return str;
+}
+
+function cellToDate(val) {
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, 'Asia/Bangkok', 'yyyy-MM-dd');
+  }
+  return String(val);
+}
+
+function cellToNumber(val) {
+  return Number(val);
 }
 
 // ==================== HMAC TOKEN ====================
@@ -117,13 +125,11 @@ function validateToken(params) {
   const date = params.date || '';
   const token = params.token || '';
 
-  // ตรวจสอบวันที่เป็นวันนี้
   const today = Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyy-MM-dd');
   if (date !== today) {
     return { success: false, message: 'QR Code หมดอายุ ใช้ได้เฉพาะวันที่สร้างเท่านั้น' };
   }
 
-  // ตรวจสอบ token
   const expectedToken = generateHMAC(date);
   if (token !== expectedToken) {
     return { success: false, message: 'QR Code ไม่ถูกต้อง' };
@@ -138,12 +144,10 @@ function addPoints(params) {
   const date = params.date || '';
   const token = params.token || '';
 
-  // Validate phone
   if (!phone || phone.length !== 10 || !/^0\d{9}$/.test(phone)) {
     return { success: false, message: 'กรุณาระบุเบอร์โทรศัพท์ 10 หลัก (เริ่มด้วย 0)' };
   }
 
-  // Validate token
   const tokenValidation = validateToken({ date: date, token: token });
   if (!tokenValidation.success) {
     return tokenValidation;
@@ -152,36 +156,45 @@ function addPoints(params) {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   const pointsSheet = ss.getSheetByName(SHEET_POINTS);
   const data = pointsSheet.getDataRange().getValues();
-
-  // หา cycle ปัจจุบันของเบอร์นี้
   const currentCycle = getCurrentCycle(phone, ss);
 
-  // ตรวจสอบว่าสแกนวันนี้แล้วหรือยัง (ใน cycle ปัจจุบัน)
+  // นับจำนวนครั้งที่สแกนวันนี้ใน cycle ปัจจุบัน
+  let scansToday = 0;
   for (let i = 1; i < data.length; i++) {
-    if (data[i][1] === phone && data[i][2] === date && data[i][4] === currentCycle) {
-      // สแกนแล้ววันนี้ → ดึงข้อมูลแต้มมาแสดง
-      const pointsInfo = calculatePoints(phone, currentCycle, ss);
-      return {
-        success: false,
-        message: 'คุณได้สะสมแต้มวันนี้แล้ว',
-        alreadyScanned: true,
-        totalPoints: pointsInfo.totalPoints,
-        rewards: pointsInfo.rewards
-      };
+    const rowPhone = cellToPhone(data[i][1]);
+    const rowDate  = cellToDate(data[i][2]);
+    const rowCycle = cellToNumber(data[i][4]);
+
+    if (rowPhone === phone && rowDate === date && rowCycle === currentCycle) {
+      scansToday++;
     }
   }
 
+  if (scansToday >= MAX_SCANS_PER_DAY) {
+    const pointsInfo = calculatePoints(phone, currentCycle, ss);
+    return {
+      success: false,
+      message: 'คุณได้สะสมแต้มครบ ' + MAX_SCANS_PER_DAY + ' ครั้งแล้วในวันนี้',
+      alreadyScanned: true,
+      scansToday: scansToday,
+      totalPoints: pointsInfo.totalPoints,
+      rewards: pointsInfo.rewards
+    };
+  }
+
   // เพิ่มแต้ม
-  const newId = data.length; // simple auto-increment
+  const newId = data.length;
   const timestamp = Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyy-MM-dd HH:mm:ss');
   pointsSheet.appendRow([newId, phone, date, POINTS_PER_SCAN, currentCycle, timestamp]);
 
-  // คำนวณแต้มรวม
   const pointsInfo = calculatePoints(phone, currentCycle, ss);
+  const remainingScans = MAX_SCANS_PER_DAY - (scansToday + 1);
 
   return {
     success: true,
-    message: 'สะสมแต้มสำเร็จ! +' + POINTS_PER_SCAN + ' คะแนน',
+    message: 'สะสมแต้มสำเร็จ! +' + POINTS_PER_SCAN + ' แต้ม',
+    scansToday: scansToday + 1,
+    remainingScans: remainingScans,
     totalPoints: pointsInfo.totalPoints,
     rewards: pointsInfo.rewards
   };
@@ -193,13 +206,13 @@ function getCurrentCycle(phone, ss) {
 
   let maxCycle = 0;
   for (let i = 1; i < redemptionsData.length; i++) {
-    if (redemptionsData[i][1] === phone && redemptionsData[i][2] > maxCycle) {
-      maxCycle = redemptionsData[i][2];
+    const rowPhone = cellToPhone(redemptionsData[i][1]);
+    const rowCycle = cellToNumber(redemptionsData[i][2]);
+    if (rowPhone === phone && rowCycle > maxCycle) {
+      maxCycle = rowCycle;
     }
   }
 
-  // ถ้ามีการแลกรางวัลแล้ว cycle ถัดไปคือ maxCycle + 1
-  // ถ้ายังไม่เคยแลก cycle = 1
   return maxCycle > 0 ? maxCycle + 1 : 1;
 }
 
@@ -209,29 +222,29 @@ function calculatePoints(phone, cycle, ss) {
 
   let totalPoints = 0;
   for (let i = 1; i < data.length; i++) {
-    if (data[i][1] === phone && data[i][4] === cycle) {
-      totalPoints += data[i][3];
+    const rowPhone = cellToPhone(data[i][1]);
+    const rowCycle = cellToNumber(data[i][4]);
+    if (rowPhone === phone && rowCycle === cycle) {
+      totalPoints += cellToNumber(data[i][3]);
     }
   }
 
-  // ดึงเกณฑ์รางวัล
   const rewardsSheet = ss.getSheetByName(SHEET_REWARDS);
   const rewardsData = rewardsSheet.getDataRange().getValues();
 
   let rewards = [];
   for (let i = 1; i < rewardsData.length; i++) {
+    const minPts = cellToNumber(rewardsData[i][0]);
     rewards.push({
-      minPoints: rewardsData[i][0],
-      name: rewardsData[i][1],
-      detail: rewardsData[i][2],
-      achieved: totalPoints >= rewardsData[i][0],
-      pointsNeeded: Math.max(0, rewardsData[i][0] - totalPoints)
+      minPoints: minPts,
+      name: String(rewardsData[i][1]),
+      detail: String(rewardsData[i][2]),
+      achieved: totalPoints >= minPts,
+      pointsNeeded: Math.max(0, minPts - totalPoints)
     });
   }
 
-  // เรียงตามคะแนนขั้นต่ำ
   rewards.sort(function(a, b) { return a.minPoints - b.minPoints; });
-
   return { totalPoints: totalPoints, rewards: rewards };
 }
 
@@ -262,9 +275,9 @@ function getRewards() {
   let rewards = [];
   for (let i = 1; i < data.length; i++) {
     rewards.push({
-      minPoints: data[i][0],
-      name: data[i][1],
-      detail: data[i][2]
+      minPoints: cellToNumber(data[i][0]),
+      name: String(data[i][1]),
+      detail: String(data[i][2])
     });
   }
 
@@ -290,21 +303,15 @@ function getStats(params) {
   const filterDate = params.filterDate || '';
   const filterMonth = params.filterMonth || '';
 
-  // รวบรวมข้อมูลผู้ใช้ทั้งหมด
   let usersMap = {};
   for (let i = 1; i < data.length; i++) {
-    const phone = data[i][1];
-    const date = data[i][2];
-    const points = data[i][3];
-    const cycle = data[i][4];
+    const phone = cellToPhone(data[i][1]);
+    const date  = cellToDate(data[i][2]);
+    const points = cellToNumber(data[i][3]);
+    const cycle = cellToNumber(data[i][4]);
 
-    // กรองตามเบอร์โทร
     if (filterPhone && phone !== filterPhone) continue;
-
-    // กรองตามวัน
     if (filterDate && date !== filterDate) continue;
-
-    // กรองตามเดือน (format: YYYY-MM)
     if (filterMonth && !date.startsWith(filterMonth)) continue;
 
     const key = phone + '_' + cycle;
@@ -316,7 +323,8 @@ function getStats(params) {
         scanCount: 0,
         lastScan: '',
         redeemed: false,
-        redeemedDate: ''
+        redeemedDate: '',
+        redeemedReward: ''
       };
     }
     usersMap[key].totalPoints += points;
@@ -328,24 +336,27 @@ function getStats(params) {
 
   // ตรวจสอบสถานะแลกรางวัล
   for (let i = 1; i < redemptionsData.length; i++) {
-    const key = redemptionsData[i][1] + '_' + redemptionsData[i][2];
+    const rPhone = cellToPhone(redemptionsData[i][1]);
+    const rCycle = cellToNumber(redemptionsData[i][2]);
+    const key = rPhone + '_' + rCycle;
     if (usersMap[key]) {
       usersMap[key].redeemed = true;
-      usersMap[key].redeemedDate = redemptionsData[i][5];
-      usersMap[key].redeemedReward = redemptionsData[i][4];
+      usersMap[key].redeemedDate = cellToDate(redemptionsData[i][5]);
+      usersMap[key].redeemedReward = String(redemptionsData[i][4]);
     }
   }
 
-  // แปลงเป็น array และเรียงลำดับ
   let usersList = Object.values(usersMap);
+  // เรียงตามเบอร์โทร (String) แล้วตาม cycle ล่าสุดก่อน
   usersList.sort(function(a, b) {
-    if (a.phone === b.phone) return b.cycle - a.cycle;
-    return a.phone.localeCompare(b.phone);
+    const pa = String(a.phone);
+    const pb = String(b.phone);
+    if (pa === pb) return b.cycle - a.cycle;
+    return pa < pb ? -1 : pa > pb ? 1 : 0;
   });
 
-  // Pagination
   const totalItems = usersList.length;
-  const totalPages = Math.ceil(totalItems / pageSize);
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
   const startIndex = (page - 1) * pageSize;
   const pagedUsers = usersList.slice(startIndex, startIndex + pageSize);
 
@@ -379,10 +390,9 @@ function redeemReward(params) {
   const pointsInfo = calculatePoints(phone, currentCycle, ss);
 
   if (pointsInfo.totalPoints === 0) {
-    return { success: false, message: 'ผู้ใช้ยังไม่มีคะแนนสะสม' };
+    return { success: false, message: 'ผู้ใช้ยังไม่มีแต้มสะสม' };
   }
 
-  // บันทึกการแลกรางวัล
   const redemptionsSheet = ss.getSheetByName(SHEET_REDEMPTIONS);
   const redemptionsData = redemptionsSheet.getDataRange().getValues();
   const newId = redemptionsData.length;
@@ -410,6 +420,5 @@ function redeemReward(params) {
 
 // ==================== UTILITIES ====================
 function normalizePhone(phone) {
-  // ลบอักขระที่ไม่ใช่ตัวเลข
-  return phone.replace(/[^0-9]/g, '');
+  return String(phone).replace(/[^0-9]/g, '');
 }
