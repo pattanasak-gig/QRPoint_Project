@@ -6,6 +6,7 @@
   <title>QRPoint - Admin</title>
   <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <div class="container admin-page">
@@ -38,25 +39,23 @@
 
       <!-- Tabs -->
       <div class="tabs">
-        <button class="tab active" onclick="switchTab('qr')" id="tabQR">สร้าง QR Code</button>
-        <button class="tab" onclick="switchTab('stats')" id="tabStats">สถิติผู้ใช้</button>
+        <button class="tab active" onclick="switchTab('qr')"     id="tabQR">สร้าง QR Code</button>
+        <button class="tab"        onclick="switchTab('stats')"  id="tabStats">สถิติผู้ใช้</button>
+        <button class="tab"        onclick="switchTab('report')" id="tabReport">รายงาน</button>
       </div>
 
       <!-- QR Code Tab -->
       <div id="qrTab" class="card tab-content">
         <h2>สร้าง QR Code ประจำวัน</h2>
         <p class="text-muted">QR Code จะใช้ได้เฉพาะวันที่สร้างเท่านั้น</p>
-
         <div class="form-group">
           <label>วันที่</label>
           <input type="date" id="qrDate" class="form-control">
         </div>
-
         <button class="btn btn-primary btn-block" onclick="generateQR()" id="genQRBtn">
           <span id="genQRText">สร้าง QR Code</span>
           <span id="genQRLoading" class="loading hidden"></span>
         </button>
-
         <div id="qrResult" class="hidden">
           <div class="qr-display" id="qrDisplay"></div>
           <p class="text-center text-muted" id="qrDateLabel"></p>
@@ -72,13 +71,28 @@
 
       <!-- Stats Tab -->
       <div id="statsTab" class="card tab-content hidden">
-        <h2>สถิติผู้ใช้บริการ</h2>
+        <div class="stats-header">
+          <h2>สถิติผู้ใช้บริการ</h2>
+          <div id="userCountArea" class="user-count-area hidden">
+            <span id="userCountNum" class="count-badge">0</span>
+            <span class="text-muted" style="font-size:14px"> ราย</span>
+          </div>
+        </div>
 
         <!-- Filters -->
         <div class="filters">
           <div class="form-group form-inline">
             <label>ค้นหาเบอร์โทร</label>
             <input type="tel" id="filterPhone" placeholder="0812345678" maxlength="10" inputmode="numeric">
+          </div>
+          <div class="form-group form-inline">
+            <label>สถานะ</label>
+            <select id="filterStatus">
+              <option value="all">ทั้งหมด</option>
+              <option value="accumulating">กำลังสะสม</option>
+              <option value="eligible">ยังไม่แลกรางวัล</option>
+              <option value="redeemed">แลกแล้ว</option>
+            </select>
           </div>
           <div class="form-group form-inline">
             <label>กรองตามวัน</label>
@@ -100,14 +114,19 @@
           <button class="btn btn-outline" onclick="clearFilters()">ล้างตัวกรอง</button>
         </div>
 
+        <div id="statsLoading" class="text-center hidden" style="padding:20px">
+          <span class="loading-dark"></span>
+          <span style="margin-left:8px;color:#888">กำลังโหลด...</span>
+        </div>
+
         <!-- Stats Table -->
         <div class="table-responsive">
-          <table class="table" id="statsTable">
+          <table class="table">
             <thead>
               <tr>
                 <th>เบอร์โทรศัพท์</th>
                 <th>รอบ</th>
-                <th>คะแนนรวม</th>
+                <th>แต้มสะสม</th>
                 <th>จำนวนสแกน</th>
                 <th>สแกนล่าสุด</th>
                 <th>สถานะ</th>
@@ -119,13 +138,39 @@
             </tbody>
           </table>
         </div>
-
-        <!-- Pagination -->
         <div class="pagination" id="pagination"></div>
+      </div>
 
-        <!-- Stats Loading -->
-        <div id="statsLoading" class="text-center hidden">
-          <span class="loading"></span> กำลังโหลดข้อมูล...
+      <!-- Report Tab -->
+      <div id="reportTab" class="card tab-content hidden">
+        <div class="report-header">
+          <h2>รายงานสถิติ</h2>
+          <div class="period-selector">
+            <button class="period-btn active" onclick="setPeriod('day')"   id="periodDay">รายวัน</button>
+            <button class="period-btn"        onclick="setPeriod('week')"  id="periodWeek">รายสัปดาห์</button>
+            <button class="period-btn"        onclick="setPeriod('month')" id="periodMonth">รายเดือน</button>
+          </div>
+        </div>
+
+        <div id="reportLoading" class="text-center hidden" style="padding:40px">
+          <span class="loading-dark"></span>
+          <p style="margin-top:12px;color:#888">กำลังโหลดข้อมูล...</p>
+        </div>
+
+        <div id="reportContent">
+          <div class="chart-box">
+            <h3 class="chart-title">จำนวนผู้ใช้บริการที่สแกน QR Code</h3>
+            <div class="chart-wrap"><canvas id="chartScans"></canvas></div>
+          </div>
+          <div class="chart-box">
+            <h3 class="chart-title">จำนวนแต้มสะสม</h3>
+            <div class="chart-wrap"><canvas id="chartPoints"></canvas></div>
+          </div>
+          <div class="chart-box" style="border-bottom:none">
+            <h3 class="chart-title">จำนวนรางวัลที่มอบ (แยกตามประเภท)</h3>
+            <div class="chart-wrap"><canvas id="chartRewards"></canvas></div>
+            <p id="noRewardData" class="text-center text-muted hidden" style="margin-top:12px">ยังไม่มีข้อมูลการมอบรางวัล</p>
+          </div>
         </div>
       </div>
 
@@ -135,16 +180,14 @@
         <div class="modal-content card">
           <h3>มอบรางวัล</h3>
           <p>เบอร์โทร: <strong id="modalPhone"></strong></p>
-          <p>คะแนนรวม: <strong id="modalPoints"></strong> คะแนน</p>
+          <p>แต้มสะสม: <strong id="modalPoints"></strong> แต้ม</p>
           <p>รอบที่: <strong id="modalCycle"></strong></p>
-
           <div class="form-group">
             <label>เลือกรางวัล</label>
             <select id="rewardSelect" class="form-control">
               <option value="">-- เลือกรางวัล --</option>
             </select>
           </div>
-
           <div class="btn-group">
             <button class="btn btn-primary" onclick="confirmRedeem()">ยืนยันมอบรางวัล</button>
             <button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button>

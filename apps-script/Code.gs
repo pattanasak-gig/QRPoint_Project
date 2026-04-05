@@ -120,6 +120,7 @@ function handleRequest(e) {
       case 'getPoints':     result = getPoints(params);     break;
       case 'getRewards':    result = getRewards();          break;
       case 'getStats':      result = getStats(params);      break;
+      case 'getReport':     result = getReport(params);     break;
       case 'redeemReward':  result = redeemReward(params);  break;
       case 'setup':
         setupSheets();
@@ -304,15 +305,24 @@ function getStats(params) {
   if (params.password !== ADMIN_PASSWORD)
     return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
 
-  var ss   = SpreadsheetApp.openById(SPREADSHEET_ID);
-  var data = ss.getSheetByName(SHEET_POINTS).getDataRange().getValues();
+  var ss     = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var data   = ss.getSheetByName(SHEET_POINTS).getDataRange().getValues();
   var rdData = ss.getSheetByName(SHEET_REDEMPTIONS).getDataRange().getValues();
 
-  var page        = parseInt(params.page)     || 1;
-  var pageSize    = parseInt(params.pageSize) || 20;
-  var filterPhone = normalizePhone(params.filterPhone || '');
-  var filterDate  = params.filterDate  || '';
-  var filterMonth = params.filterMonth || '';
+  var page         = parseInt(params.page)     || 1;
+  var pageSize     = parseInt(params.pageSize) || 20;
+  var filterPhone  = normalizePhone(params.filterPhone || '');
+  var filterDate   = params.filterDate   || '';
+  var filterMonth  = params.filterMonth  || '';
+  var filterStatus = params.filterStatus || 'all';  // all | accumulating | eligible | redeemed
+
+  // ดึง minPoints รางวัลต่ำสุดจาก Rewards sheet เพื่อแบ่ง eligible
+  var rwData    = ss.getSheetByName(SHEET_REWARDS).getDataRange().getValues();
+  var minReward = Infinity;
+  for (var r = 1; r < rwData.length; r++) {
+    var rp = toNum(rwData[r][0]);
+    if (rp < minReward) minReward = rp;
+  }
 
   var map = {};
   for (var i = 1; i < data.length; i++) {
@@ -338,17 +348,28 @@ function getStats(params) {
 
   // สถานะแลกรางวัล
   for (var j = 1; j < rdData.length; j++) {
-    var rp  = toPhone(rdData[j][1]);
+    var rph = toPhone(rdData[j][1]);
     var rc  = toNum(rdData[j][2]);
-    var key2 = rp + '_' + rc;
-    if (map[key2]) {
-      map[key2].redeemed      = true;
-      map[key2].redeemedDate  = toDate(rdData[j][5]);
-      map[key2].redeemedReward = String(rdData[j][4]);
+    var k2  = rph + '_' + rc;
+    if (map[k2]) {
+      map[k2].redeemed       = true;
+      map[k2].redeemedDate   = toDate(rdData[j][5]);
+      map[k2].redeemedReward = String(rdData[j][4]);
     }
   }
 
   var list = Object.values(map);
+
+  // กรองตาม filterStatus
+  if (filterStatus !== 'all') {
+    list = list.filter(function(u) {
+      if (filterStatus === 'redeemed')     return u.redeemed;
+      if (filterStatus === 'eligible')     return !u.redeemed && u.totalPoints >= minReward;
+      if (filterStatus === 'accumulating') return !u.redeemed && u.totalPoints < minReward;
+      return true;
+    });
+  }
+
   list.sort(function(a, b) {
     var pa = String(a.phone), pb = String(b.phone);
     if (pa === pb) return b.cycle - a.cycle;
@@ -364,6 +385,117 @@ function getStats(params) {
     users: list.slice(start, start + pageSize),
     pagination: { page: page, pageSize: pageSize,
                   totalItems: total, totalPages: totalPages }
+  };
+}
+
+// ==================== REPORT ====================
+function getReport(params) {
+  if (params.password !== ADMIN_PASSWORD)
+    return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+
+  var period = params.period || 'day'; // day | week | month
+  var ss     = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var pData  = ss.getSheetByName(SHEET_POINTS).getDataRange().getValues();
+  var rData  = ss.getSheetByName(SHEET_REDEMPTIONS).getDataRange().getValues();
+
+  // ── กำหนดช่วงเวลา ──────────────────────────────────────────
+  var today  = new Date();
+  var labels = [];
+
+  if (period === 'day') {
+    // 30 วันย้อนหลัง
+    for (var d = 29; d >= 0; d--) {
+      var dt = new Date(today);
+      dt.setDate(today.getDate() - d);
+      labels.push(Utilities.formatDate(dt, 'Asia/Bangkok', 'yyyy-MM-dd'));
+    }
+  } else if (period === 'week') {
+    // 12 สัปดาห์ย้อนหลัง (ใช้วันจันทร์เป็น key)
+    for (var w = 11; w >= 0; w--) {
+      var wdt = new Date(today);
+      var day = wdt.getDay() || 7; // 1=Mon..7=Sun
+      wdt.setDate(wdt.getDate() - (day - 1) - w * 7);
+      labels.push(Utilities.formatDate(wdt, 'Asia/Bangkok', 'yyyy-MM-dd'));
+    }
+  } else {
+    // 12 เดือนย้อนหลัง
+    for (var m = 11; m >= 0; m--) {
+      var mdt = new Date(today.getFullYear(), today.getMonth() - m, 1);
+      labels.push(Utilities.formatDate(mdt, 'Asia/Bangkok', 'yyyy-MM'));
+    }
+  }
+
+  // ── helper: date → label key ────────────────────────────────
+  function dateToKey(dateStr) {
+    if (period === 'month') return dateStr.substring(0, 7);
+    if (period === 'week') {
+      var dt  = parseDateStr(dateStr);
+      var day = dt.getDay() || 7;
+      dt.setDate(dt.getDate() - (day - 1));
+      return Utilities.formatDate(dt, 'Asia/Bangkok', 'yyyy-MM-dd');
+    }
+    return dateStr;
+  }
+
+  function parseDateStr(s) {
+    var p = s.split('-');
+    return new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
+  }
+
+  // ── สร้าง map เริ่มต้น ──────────────────────────────────────
+  var scansMap  = {}, pointsMap = {};
+  labels.forEach(function(l) { scansMap[l] = 0; pointsMap[l] = 0; });
+
+  // นับจาก Points sheet (นับ unique phone ต่อวัน สำหรับ scans)
+  var scanTrack = {}; // key = label_phone → กัน double count ในสัปดาห์/เดือน
+  for (var i = 1; i < pData.length; i++) {
+    var date   = toDate(pData[i][2]);
+    var phone  = toPhone(pData[i][1]);
+    var pts    = toNum(pData[i][3]);
+    var lk     = dateToKey(date);
+    if (scansMap[lk] === undefined) continue;
+
+    pointsMap[lk] += pts;
+
+    // นับ unique scans (1 phone 1 วัน = 1 scan ไม่ว่าสแกนกี่ครั้ง)
+    var trackKey = lk + '_' + phone + '_' + date;
+    if (!scanTrack[trackKey]) {
+      scanTrack[trackKey] = true;
+      scansMap[lk] += 1;
+    }
+  }
+
+  // ── รางวัล แยกตาม reward_name ───────────────────────────────
+  var rewardNames = {};
+  var rewardMap   = {}; // rewardName → { label → count }
+
+  for (var j = 1; j < rData.length; j++) {
+    var rdDate  = toDate(rData[j][5]);
+    // redemptions sheet col F = redeemed_date (อาจเป็น datetime)
+    var rdDateOnly = rdDate.substring(0, 10);
+    var rlk     = dateToKey(rdDateOnly);
+    if (scansMap[rlk] === undefined) continue; // นอกช่วง label
+
+    var rwName = String(rData[j][4]);
+    if (!rewardNames[rwName]) {
+      rewardNames[rwName] = true;
+      rewardMap[rwName]   = {};
+      labels.forEach(function(l) { rewardMap[rwName][l] = 0; });
+    }
+    rewardMap[rwName][rlk] += 1;
+  }
+
+  var rewardSeries = Object.keys(rewardMap).map(function(name) {
+    return { name: name, data: labels.map(function(l) { return rewardMap[name][l]; }) };
+  });
+
+  return {
+    success: true,
+    period:  period,
+    labels:  labels,
+    scans:   labels.map(function(l) { return scansMap[l]; }),
+    points:  labels.map(function(l) { return pointsMap[l]; }),
+    rewards: rewardSeries
   };
 }
 
