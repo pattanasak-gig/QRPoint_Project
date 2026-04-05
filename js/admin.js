@@ -57,13 +57,16 @@ function logout() {
 }
 
 // ==================== TABS ====================
+// map tab key → button element ID (ป้องกัน case mismatch เช่น qr→tabQR)
+var TAB_BTN_ID = { qr: 'tabQR', stats: 'tabStats', report: 'tabReport' };
+
 function switchTab(tab) {
   ['qr', 'stats', 'report'].forEach(function(t) {
     document.getElementById(t + 'Tab').classList.add('hidden');
-    document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1)).classList.remove('active');
+    document.getElementById(TAB_BTN_ID[t]).classList.remove('active');
   });
   document.getElementById(tab + 'Tab').classList.remove('hidden');
-  document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+  document.getElementById(TAB_BTN_ID[tab]).classList.add('active');
 
   if (tab === 'stats')  loadStats(1);
   if (tab === 'report') loadReport();
