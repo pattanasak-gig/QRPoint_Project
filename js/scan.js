@@ -82,18 +82,25 @@ async function submitPoints() {
 function showResult(data) {
   showSection('resultSection');
 
+  // แสดงเบอร์โทรที่ระบุ
+  const phoneDisplay = data.phone ? formatPhone(data.phone) : '';
+  const phoneLine = phoneDisplay
+    ? '<p style="margin-top:4px;font-size:13px;color:#666">เบอร์โทร: <strong>' + phoneDisplay + '</strong></p>'
+    : '';
+
   const resultAlert = document.getElementById('resultAlert');
   if (data.alreadyScanned) {
     resultAlert.innerHTML =
       '<div class="alert alert-warning"><span class="alert-icon">&#9888;&#65039;</span>' +
-      '<div><strong>' + data.message + '</strong></div></div>';
+      '<div><strong>' + data.message + '</strong>' + phoneLine + '</div></div>';
   } else {
     const remainMsg = data.remainingScans > 0
-      ? ' (สะสมได้อีก ' + data.remainingScans + ' ครั้งในวันนี้)'
-      : ' (ครบจำนวนครั้งที่สะสมได้ในวันนี้แล้ว)';
+      ? 'สะสมได้อีก ' + data.remainingScans + ' ครั้งในวันนี้'
+      : 'ครบจำนวนครั้งที่สะสมได้ในวันนี้แล้ว';
     resultAlert.innerHTML =
       '<div class="alert alert-success"><span class="alert-icon">&#9989;</span>' +
-      '<div><strong>' + data.message + '</strong><p>' + remainMsg + '</p></div></div>';
+      '<div><strong>' + data.message + '</strong>' + phoneLine +
+      '<p style="margin-top:4px;font-size:13px">' + remainMsg + '</p></div></div>';
   }
 
   document.getElementById('totalPoints').textContent = data.totalPoints;
@@ -175,4 +182,12 @@ function resetForm() {
   document.getElementById('phoneInput').value = '';
   showSection('phoneSection');
   document.getElementById('phoneInput').focus();
+}
+
+function formatPhone(phone) {
+  var s = String(phone);
+  if (s.length === 10) {
+    return s.substring(0, 3) + '-' + s.substring(3, 6) + '-' + s.substring(6);
+  }
+  return s;
 }

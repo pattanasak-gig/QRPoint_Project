@@ -163,18 +163,21 @@ function validateToken(params) {
 }
 
 // ==================== WRITE ROW (ป้องกัน auto-convert) ====================
+// appendRow() ไม่สนใจ format ที่ set ไว้ → ใช้ setValues() แล้วเขียน phone/date ทับด้วย setValue()
 function writePointsRow(sheet, values) {
-  // กำหนด format ก่อน แล้วค่อย appendRow เพื่อป้องกัน Sheets แปลง phone/date
   var nextRow = sheet.getLastRow() + 1;
-  sheet.getRange(nextRow, 2).setNumberFormat('@STRING@'); // phone
-  sheet.getRange(nextRow, 3).setNumberFormat('@STRING@'); // date
-  sheet.appendRow(values);
+  // เขียนทั้งแถวก่อน
+  sheet.getRange(nextRow, 1, 1, values.length).setValues([values]);
+  // บังคับ phone (col 2) และ date (col 3) เป็น text ทับซ้ำ
+  sheet.getRange(nextRow, 2).setNumberFormat('@STRING@').setValue(String(values[1]));
+  sheet.getRange(nextRow, 3).setNumberFormat('@STRING@').setValue(String(values[2]));
 }
 
 function writeRedemptionRow(sheet, values) {
   var nextRow = sheet.getLastRow() + 1;
-  sheet.getRange(nextRow, 2).setNumberFormat('@STRING@'); // phone
-  sheet.appendRow(values);
+  sheet.getRange(nextRow, 1, 1, values.length).setValues([values]);
+  // บังคับ phone (col 2) เป็น text ทับซ้ำ
+  sheet.getRange(nextRow, 2).setNumberFormat('@STRING@').setValue(String(values[1]));
 }
 
 // ==================== POINTS ====================
@@ -210,6 +213,7 @@ function addPoints(params) {
       success: false,
       alreadyScanned: true,
       message: 'คุณสะสมแต้มครบ ' + MAX_SCANS_PER_DAY + ' ครั้งในวันนี้แล้ว',
+      phone: phone,
       scansToday: scansToday,
       remainingScans: 0,
       totalPoints: pi.totalPoints,
@@ -217,17 +221,17 @@ function addPoints(params) {
     };
   }
 
-  // เขียนแถวใหม่ (ใช้ writePointsRow ป้องกัน auto-convert)
   var newId   = data.length;
   var ts      = Utilities.formatDate(new Date(),'Asia/Bangkok','yyyy-MM-dd HH:mm:ss');
   writePointsRow(ps, [newId, phone, date, POINTS_PER_SCAN, currentCycle, ts]);
 
-  var pointsInfo    = calculatePoints(phone, currentCycle, ss);
+  var pointsInfo     = calculatePoints(phone, currentCycle, ss);
   var remainingScans = MAX_SCANS_PER_DAY - (scansToday + 1);
 
   return {
     success: true,
     message: 'สะสมแต้มสำเร็จ! +' + POINTS_PER_SCAN + ' แต้ม',
+    phone: phone,
     scansToday: scansToday + 1,
     remainingScans: remainingScans,
     totalPoints: pointsInfo.totalPoints,
