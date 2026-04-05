@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QRPoint - Admin</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+</head>
+<body>
+  <div class="container admin-page">
+
+    <!-- Login Section -->
+    <div id="loginSection" class="card">
+      <div class="logo">
+        <div class="logo-icon">QP</div>
+        <h1>QRPoint Admin</h1>
+        <p class="subtitle">เข้าสู่ระบบจัดการ</p>
+      </div>
+      <div class="form-group">
+        <label for="passwordInput">รหัสผ่าน</label>
+        <input type="password" id="passwordInput" placeholder="ระบุรหัสผ่าน" onkeydown="if(event.key==='Enter')login()">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="login()">เข้าสู่ระบบ</button>
+      <p id="loginError" class="text-error hidden">รหัสผ่านไม่ถูกต้อง</p>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="dashboardSection" class="hidden">
+      <!-- Header -->
+      <div class="admin-header">
+        <div class="logo-sm">
+          <div class="logo-icon-sm">QP</div>
+          <span>QRPoint Admin</span>
+        </div>
+        <button class="btn btn-sm btn-outline" onclick="logout()">ออกจากระบบ</button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('qr')" id="tabQR">สร้าง QR Code</button>
+        <button class="tab" onclick="switchTab('stats')" id="tabStats">สถิติผู้ใช้</button>
+      </div>
+
+      <!-- QR Code Tab -->
+      <div id="qrTab" class="card tab-content">
+        <h2>สร้าง QR Code ประจำวัน</h2>
+        <p class="text-muted">QR Code จะใช้ได้เฉพาะวันที่สร้างเท่านั้น</p>
+
+        <div class="form-group">
+          <label>วันที่</label>
+          <input type="date" id="qrDate" class="form-control">
+        </div>
+
+        <button class="btn btn-primary btn-block" onclick="generateQR()" id="genQRBtn">
+          <span id="genQRText">สร้าง QR Code</span>
+          <span id="genQRLoading" class="loading hidden"></span>
+        </button>
+
+        <div id="qrResult" class="hidden">
+          <div class="qr-display" id="qrDisplay"></div>
+          <p class="text-center text-muted" id="qrDateLabel"></p>
+          <div class="btn-group">
+            <button class="btn btn-outline" onclick="downloadQR()">ดาวน์โหลด QR Code</button>
+            <button class="btn btn-outline" onclick="copyQRLink()">คัดลอกลิงก์</button>
+          </div>
+          <div id="qrLinkDisplay" class="qr-link hidden">
+            <code id="qrLinkText"></code>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Tab -->
+      <div id="statsTab" class="card tab-content hidden">
+        <h2>สถิติผู้ใช้บริการ</h2>
+
+        <!-- Filters -->
+        <div class="filters">
+          <div class="form-group form-inline">
+            <label>ค้นหาเบอร์โทร</label>
+            <input type="tel" id="filterPhone" placeholder="0812345678" maxlength="10" inputmode="numeric">
+          </div>
+          <div class="form-group form-inline">
+            <label>กรองตามวัน</label>
+            <input type="date" id="filterDate">
+          </div>
+          <div class="form-group form-inline">
+            <label>กรองตามเดือน</label>
+            <input type="month" id="filterMonth">
+          </div>
+          <div class="form-group form-inline">
+            <label>แสดงหน้าละ</label>
+            <select id="pageSize">
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="loadStats(1)">ค้นหา</button>
+          <button class="btn btn-outline" onclick="clearFilters()">ล้างตัวกรอง</button>
+        </div>
+
+        <!-- Stats Table -->
+        <div class="table-responsive">
+          <table class="table" id="statsTable">
+            <thead>
+              <tr>
+                <th>เบอร์โทรศัพท์</th>
+                <th>รอบ</th>
+                <th>คะแนนรวม</th>
+                <th>จำนวนสแกน</th>
+                <th>สแกนล่าสุด</th>
+                <th>สถานะ</th>
+                <th>จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="statsBody">
+              <tr><td colspan="7" class="text-center text-muted">กดค้นหาเพื่อดูข้อมูล</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination" id="pagination"></div>
+
+        <!-- Stats Loading -->
+        <div id="statsLoading" class="text-center hidden">
+          <span class="loading"></span> กำลังโหลดข้อมูล...
+        </div>
+      </div>
+
+      <!-- Redeem Modal -->
+      <div id="redeemModal" class="modal hidden">
+        <div class="modal-overlay" onclick="closeModal()"></div>
+        <div class="modal-content card">
+          <h3>มอบรางวัล</h3>
+          <p>เบอร์โทร: <strong id="modalPhone"></strong></p>
+          <p>คะแนนรวม: <strong id="modalPoints"></strong> คะแนน</p>
+          <p>รอบที่: <strong id="modalCycle"></strong></p>
+
+          <div class="form-group">
+            <label>เลือกรางวัล</label>
+            <select id="rewardSelect" class="form-control">
+              <option value="">-- เลือกรางวัล --</option>
+            </select>
+          </div>
+
+          <div class="btn-group">
+            <button class="btn btn-primary" onclick="confirmRedeem()">ยืนยันมอบรางวัล</button>
+            <button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <p>QRPoint System &copy; 2026</p>
+    </footer>
+  </div>
+
+  <script src="js/admin.js"></script>
+</body>
+</html>
